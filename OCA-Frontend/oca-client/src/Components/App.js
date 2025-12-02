@@ -31,7 +31,8 @@ function App(props) {
       {/* Chatbox is present and keystrokes change state, but need to figure out how to size it properly. May need to use a different element. */}
       <section id='userPrompt'>
         <form onSubmit={handleSubmit}>
-          <input type='text' placeholder='Type your prompt here...' value={userPrompt} onChange={handleChange}></input>
+          {/* <input type='text' placeholder='Type your prompt here...' value={userPrompt} onChange={handleChange}></input> */}
+          <textarea rows={6} cols={80} placeholder='Type your prompt here...' value={userPrompt} onChange={handleChange} ></textarea>
         </form>
       </section>
     </div>
