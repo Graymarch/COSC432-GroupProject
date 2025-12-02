@@ -32,7 +32,7 @@ function App(props) {
       <section id='userPrompt'>
         <form onSubmit={handleSubmit}>
           {/* <input type='text' placeholder='Type your prompt here...' value={userPrompt} onChange={handleChange}></input> */}
-          <textarea rows={6} cols={80} placeholder='Type your prompt here...' value={userPrompt} onChange={handleChange} ></textarea>
+          <textarea rows={6} cols={70} placeholder='Type your prompt here...' value={userPrompt} onChange={handleChange} ></textarea>
         </form>
       </section>
     </div>
