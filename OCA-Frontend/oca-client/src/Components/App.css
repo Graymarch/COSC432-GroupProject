@@ -101,6 +101,7 @@ body {
   border-radius: var(--border-radius);
   margin-bottom: var(--spacing-unit);
   min-height: 200px;
+  max-height: 400px;
   padding: 1rem;
   overflow-y: auto;
   /* Very subtle inner shadow (lighter than outer) */
