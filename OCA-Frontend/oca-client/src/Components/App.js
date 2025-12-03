@@ -21,41 +21,81 @@ function App(props) {
   const [message,setMessage] = useState('')
 
   const sendMessage = async () => {
-    setMessage('')
-    setMessages((messages) => [
-      ...messages,
-      { role: 'user', content: message },
+    // 1. Snapshot the message and clear the input
+    const userMessage = message;
+    setMessage('');
+
+    // 2. Optimistically update the UI with the user message and an empty assistant message
+    // NOTE: We use the local userMessage variable here.
+    setMessages((currentMessages) => [
+      ...currentMessages,
+      { role: 'user', content: userMessage },
       { role: 'assistant', content: '' },
-    ])
+    ]);
 
-    const response = fetch ('../../../../OCA-Backend/oca-api/model', {
-      method: "GET",
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify([...messages, {role: 'user', content: message}]),
-    }).then(async (res) => {
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
+    const API_URL = '/model'; // <--- ADJUST THIS URL!
 
-      let result = ''
-      return reader.read().then(function processText ({ done, value }) {
+    try {
+      // Await the fetch call and use POST method with a body
+      const response = await fetch(API_URL, {
+        method: 'POST', // <--- CORRECTED: Must be POST to send a body
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        // Send the current messages (including the new user message)
+        body: JSON.stringify([...messages, { role: 'user', content: userMessage }]),
+      });
+
+      if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      // Handle streaming response
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      let result = '';
+
+      // Recursive function to process the stream
+      function processText({ done, value }) {
         if (done) {
-          return result
+          return result; // End of stream
         }
-        const text = decoder.decode(value || new Int8Array(), { stream: true})
-        setMessages((messages) => {
-          let lastMessage = messages[messages.length -1]
-          let otherMessages = messages.slice(0,messages.length - 1)
+
+        const text = decoder.decode(value, { stream: true });
+        result += text; // Keep track of the full response (optional)
+
+        // Update the state with the new chunk of text
+        setMessages((currentMessages) => {
+          // Find the last message (the one we're currently streaming into)
+          const lastMessage = currentMessages[currentMessages.length - 1];
+          const otherMessages = currentMessages.slice(0, currentMessages.length - 1);
+
           return [
             ...otherMessages,
-            {...lastMessage, content: lastMessage.content + text},
-          ]
-        })
-        return reader.read().then(processText)
-      })
-    })
-  }
+            { ...lastMessage, content: lastMessage.content + text }, // Append the new chunk
+          ];
+        });
+
+        // Continue reading the next chunk
+        return reader.read().then(processText);
+      }
+
+      // Start reading the stream
+      await reader.read().then(processText);
+
+    } catch (error) {
+      console.error('API Stream Error:', error);
+      // You might want to update the UI to show an error message here
+      setMessages((currentMessages) => {
+          // Add an error message as the final assistant message
+          return [
+              ...currentMessages.slice(0, currentMessages.length - 1),
+              { role: 'assistant', content: `Error: Could not connect to the backend. (${error.message})` }
+          ];
+      });
+    }
+  };
 
 
   return (
