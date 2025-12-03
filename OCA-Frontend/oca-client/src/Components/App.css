@@ -100,6 +100,7 @@ body {
   background-color: var(--color-chat-window); /* Dedicated chat background */
   border-radius: var(--border-radius);
   margin-bottom: var(--spacing-unit);
+  min-height: 200px;
   padding: 1rem;
   overflow-y: auto;
   /* Very subtle inner shadow (lighter than outer) */
