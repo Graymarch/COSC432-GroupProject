@@ -28,7 +28,7 @@ function App(props) {
       { role: 'assistant', content: '' },
     ])
 
-    const response = fetch ('/api/chat', {
+    const response = fetch ('../../../../OCA-Backend/oca-api/model', {
       method: "GET",
       headers: {
         'Content-Type': 'application/json',
