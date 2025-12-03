@@ -10,20 +10,6 @@ function App(props) {
   const toggleMode = () => {
     setMode(mode => !mode);
   }
-
-  // const[userPrompt, setPrompt] = useState("");
-  // const handleChange = (event) => {
-  //   // Only update state if the value has changed
-  //   setPrompt(event.target.value);
-  // }
-
-  // function handleSubmit(e){
-  //   e.preventDefault();
-  //   // Logic for sending the prompt would go here
-  //   console.log("Submitting prompt:", userPrompt);
-  //   // Optionally clear the prompt after submission
-  //   setPrompt("");
-  // }
   
   const [messages,setMessages] = useState([
     {
@@ -31,7 +17,6 @@ function App(props) {
       content: `Hello, I am the COSC-442 AI support agent. I am currently operating in tutor mode. How can I help you today?`
     },
   ])
- 
 
   const [message,setMessage] = useState('')
 
