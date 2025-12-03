@@ -3,38 +3,59 @@ import { useState } from 'react';
 
 function App(props) {
   // Tracks the state of the component between tutor and TA mode. 
-  const[tutorMode, setMode] = useState(props.isTutorMode)
+  // Initialized with props.isTutorMode or defaults to false if not provided
+  const[tutorMode, setMode] = useState(props.isTutorMode || false);
   const toggleMode = () => {
-    setMode(mode => !mode)
+    setMode(mode => !mode);
   }
 
-  const[userPrompt, setPrompt] = useState("")
+  const[userPrompt, setPrompt] = useState("");
   const handleChange = (event) => {
-    setPrompt(val => event.target.value)
+    // Only update state if the value has changed
+    setPrompt(event.target.value);
   }
 
   function handleSubmit(e){
-    console.log(e);
     e.preventDefault();
+    // Logic for sending the prompt would go here
+    console.log("Submitting prompt:", userPrompt);
+    // Optionally clear the prompt after submission
+    setPrompt("");
   }
 
   return (
-    <div className="App">
-      <header><h1>{tutorMode? "Tutor Mode":"Teaching Assistant Mode"}</h1></header>
-      {/* Toggles the operating mode. */}
-      <button onClick={toggleMode}>Flip Mode</button>
+    <div className="app-container">
+      {/* Header and Mode Toggle */}
+      <header className="app-header">
+        <h1>{tutorMode ? "Tutor Mode" : "Teaching Assistant Mode"}</h1>
+        <button 
+          onClick={toggleMode} 
+          className="mode-toggle-button"
+        >
+          {tutorMode ? "Switch to TA Mode" : "Switch to Tutor Mode"}
+        </button>
+      </header>
 
-      {/* Will contain the chat with the user.  */}
-      <section className='chatField'></section>
+      <main className="chat-layout">
+        {/* contains the chat log  */}
+        <section className='chat-window'></section>
 
-      {/* Allows the user to type out a response. */}
-      {/* Chatbox is present and keystrokes change state, but need to figure out how to size it properly. May need to use a different element. */}
-      <section id='userPrompt'>
-        <form onSubmit={handleSubmit}>
-          {/* <input type='text' placeholder='Type your prompt here...' value={userPrompt} onChange={handleChange}></input> */}
-          <textarea rows={6} cols={70} placeholder='Type your prompt here...' value={userPrompt} onChange={handleChange} ></textarea>
-        </form>
-      </section>
+        {/* Prompt Input */}
+        <section className='prompt-area'>
+          <form onSubmit={handleSubmit} className='prompt-form'>
+            <textarea
+              rows={4}
+              placeholder='Type your message here...'
+              value={userPrompt}
+              onChange={handleChange}
+              className='prompt-input'
+            />
+            <button type="submit" className="submit-button" disabled={!userPrompt.trim()}>
+              Send ➡️
+            </button>
+          </form>
+        </section>
+      </main>
     </div>
   );
 }
