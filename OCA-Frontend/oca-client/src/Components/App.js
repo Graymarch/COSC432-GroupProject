@@ -29,7 +29,7 @@ function App(props) {
     ])
 
     const response = fetch ('/api/chat', {
-      method: "POST",
+      method: "GET",
       headers: {
         'Content-Type': 'application/json',
       },
