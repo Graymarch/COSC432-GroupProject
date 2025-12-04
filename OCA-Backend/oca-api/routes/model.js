@@ -32,7 +32,7 @@ router.post('/', async (req, res, next) => {
                          : [systemPrompt, ...messages];
 
     const response = await ollamaIns.chat({
-        model: 'gpt-oss:120b', 
+        model: 'gpt-oss:120b-cloud', 
         messages: finalMessages, // Use the full conversation history
         stream: true,
     });

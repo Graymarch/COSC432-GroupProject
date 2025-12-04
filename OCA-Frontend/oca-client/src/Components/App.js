@@ -38,17 +38,21 @@ function App(props) {
     try {
       // Await the fetch call and use POST method with a body
       const response = await fetch(API_URL, {
-        method: 'POST', // <--- CORRECTED: Must be POST to send a body
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         // Send the current messages (including the new user message)
         body: JSON.stringify([...messages, { role: 'user', content: userMessage }]),
       });
+      console.log("Before response check")
 
       if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
+      }else{
+        console.log(response)
       }
+      console.log("After response check")
 
       // Handle streaming response
       const reader = response.body.getReader();
