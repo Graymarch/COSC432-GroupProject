@@ -34,7 +34,7 @@ router.get('/', async (req, res, next) => {
     ];
 
     const response = await ollamaIns.chat({
-        model: 'gpt-oss:120b', 
+        model: 'llama3', 
         messages: messages, // Pass the new structured array
         stream: true,
     });
