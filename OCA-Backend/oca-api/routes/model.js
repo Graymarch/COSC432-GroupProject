@@ -1,6 +1,7 @@
 var express = require('express');
 var router = express.Router();
 
+// 1. Changed to POST to receive the body data
 router.post('/', async (req, res, next) => {
   try {
     const { Ollama } = await import('ollama');
@@ -10,36 +11,33 @@ router.post('/', async (req, res, next) => {
       headers: { Authorization: 'Bearer ' + process.env.OLLAMA_API_KEY },
     })
     
-    const userPrompt = req.query.prompt;
+    // --- CRITICAL CORRECTION ---
+    // Read the entire messages array directly from the request body.
+    // The frontend sends the whole history + the new user message.
+    const messages = req.body; 
+    
+    // Ensure the system message is prepended if it's missing (good for robustness)
+    const systemPrompt = { 
+        role: 'system', 
+        content: `You are an out of classroom learning and teaching aid. Students will interact with you to clarify 
+        conceptual and applied questions they may have related to the course. You are expected to follow this
+        course of action to tutor the student:
+        // ... (rest of your system prompt)
+        `
+    };
 
-    const messages = [
-        { 
-            role: 'system', 
-            // Instruction to guide the model's behavior (OCA Tutoring Mode)
-            content: `You are an out of classroom learning and teaching aid. Students will interact with you to clarify 
-            conceptual and applied questions they may have related to the course. You are expected to follow this
-            course of action to tutor the student:
-
-            1.1) Identify whether the question is academic and whether it is assignment or exam related. If a question has some ambiguity, ask for specific clarification.
-            1.2) If the question is assignment or exam related, offer to help the student understand concepts but DO NOT give them the answer.
-            1.3) If the input is non-academic, ignore it and redirect the conversation to offer to help the student with something academic.
-            2) When clarifying concepts, reference the course material to ask leading questions to understand the student's comprehension level
-            and converse with them.`
-        },
-        { 
-            role: 'user', 
-            // User's message
-            content: userPrompt
-        }
-    ];
+    // Prepend the system prompt if the messages array doesn't start with it
+    const finalMessages = messages.length > 0 && messages[0].role === 'system' 
+                         ? messages 
+                         : [systemPrompt, ...messages];
 
     const response = await ollamaIns.chat({
         model: 'gpt-oss:120b', 
-        messages: messages, // Pass the new structured array
+        messages: finalMessages, // Use the full conversation history
         stream: true,
     });
 
-    //Streaming response
+    // Streaming response
     res.setHeader('Content-Type', 'text/plain; charset=utf-8')
     for await (const part of response) {
       res.write(part.message?.content ?? '')
