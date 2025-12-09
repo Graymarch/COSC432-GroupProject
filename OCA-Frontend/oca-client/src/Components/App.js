@@ -8,52 +8,138 @@ function App(props) {
   // TODO: When the user toggles the mode, prompt the llm for prefab response indicating the mode changed. 
   const[tutorMode, setMode] = useState(props.isTutorMode || false);
   const toggleMode = () => {
-    setMode(mode => !mode);
+    const newMode = !tutorMode;
+    setMode(newMode);
+    // Update initial greeting based on mode
+    const greeting = newMode 
+      ? `Hello, I am the COSC-432 AI support agent. I am now operating in tutor mode. How can I help you today?`
+      : `Hello, I am the COSC-432 AI support agent. I am now operating in teaching assistant mode. I can help you find and summarize course materials. What would you like to learn about?`;
+    setMessages([{ id: 1, role: 'assistant', content: greeting }]);
+    setMessageIdCounter(2);
   }
   
-  const [messages,setMessages] = useState([
+  const [messages, setMessages] = useState([
     {
+      id: 1,
       role: 'assistant',
-      content: `Hello, I am the COSC-442 AI support agent. I am currently operating in tutor mode. How can I help you today?`
+      content: `Hello, I am the COSC-432 AI support agent. I am currently operating in tutor mode. How can I help you today?`
     },
   ])
 
-  const [message,setMessage] = useState('')
+  const [message, setMessage] = useState('')
+  const [sessionId, setSessionId] = useState(null)
+  const [messageIdCounter, setMessageIdCounter] = useState(2)
 
   const sendMessage = async () => {
+    const userMessage = message
     setMessage('')
+
+    // Add user message to chat with unique ID
+    const userMsgId = messageIdCounter
+    const assistantMsgId = messageIdCounter + 1
+    setMessageIdCounter(messageIdCounter + 2)
+
     setMessages((messages) => [
       ...messages,
-      { role: 'user', content: message },
-      { role: 'assistant', content: '' },
+      { id: userMsgId, role: 'user', content: userMessage },
+      { id: assistantMsgId, role: 'assistant', content: '' },
     ])
 
-    const response = fetch ('../../../../OCA-Backend/oca-api/model', {
-      method: "GET",
+    try {
+      if (tutorMode) {
+        // TUTORING MODE - Uses /api/chat with streaming responses
+        await handleTutoringMode(userMessage, assistantMsgId)
+      } else {
+        // TEACHING ASSISTANT MODE - Uses /api/search with JSON response
+        await handleTeachingAssistantMode(userMessage, assistantMsgId)
+      }
+    } catch (error) {
+      console.error('Error sending message:', error)
+      setMessages((messages) => {
+        let lastMessage = messages[messages.length - 1]
+        let otherMessages = messages.slice(0, messages.length - 1)
+        return [
+          ...otherMessages,
+          { ...lastMessage, content: 'Error: ' + error.message },
+        ]
+      })
+    }
+  }
+
+  const handleTutoringMode = async (userMessage, assistantMsgId) => {
+    const response = await fetch('http://localhost:3001/api/chat', {
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify([...messages, {role: 'user', content: message}]),
-    }).then(async (res) => {
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
+      body: JSON.stringify({
+        message: userMessage,
+        sessionId: sessionId,
+        studentId: 'student'
+      }),
+    })
 
-      let result = ''
-      return reader.read().then(function processText ({ done, value }) {
-        if (done) {
-          return result
-        }
-        const text = decoder.decode(value || new Int8Array(), { stream: true})
-        setMessages((messages) => {
-          let lastMessage = messages[messages.length -1]
-          let otherMessages = messages.slice(0,messages.length - 1)
-          return [
-            ...otherMessages,
-            {...lastMessage, content: lastMessage.content + text},
-          ]
-        })
-        return reader.read().then(processText)
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+
+    let result = ''
+    const processText = async ({ done, value }) => {
+      if (done) {
+        return result
+      }
+      const text = decoder.decode(value || new Int8Array(), { stream: true })
+      result += text
+      setMessages((messages) => {
+        let lastMessage = messages[messages.length - 1]
+        let otherMessages = messages.slice(0, messages.length - 1)
+        return [
+          ...otherMessages,
+          { ...lastMessage, content: lastMessage.content + text },
+        ]
       })
+      return reader.read().then(processText)
+    }
+
+    await reader.read().then(processText)
+  }
+
+  const handleTeachingAssistantMode = async (userMessage, assistantMsgId) => {
+    const response = await fetch('http://localhost:3001/api/search', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        query: userMessage,
+        sessionId: sessionId,
+        studentId: 'student',
+        maxResults: 5
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    const data = await response.json()
+
+    // Format the response with summary and sources
+    let responseContent = data.summary || 'No information found.'
+    
+    if (data.sources && data.sources.length > 0) {
+      responseContent += '\n\n**Sources:**\n'
+      data.sources.forEach((source, index) => {
+        responseContent += `${index + 1}. ${source.document} - ${source.section || 'Section not specified'}\n`
+      })
+    }
+
+    setMessages((messages) => {
+      let lastMessage = messages[messages.length - 1]
+      let otherMessages = messages.slice(0, messages.length - 1)
+      return [
+        ...otherMessages,
+        { ...lastMessage, content: responseContent },
+      ]
     })
   }
 
