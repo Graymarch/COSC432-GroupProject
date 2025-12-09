@@ -142,19 +142,44 @@ router.post('/', async (req, res, next) => {
       topK: maxResults
     });
 
+    let summary = '';
+    let sources = [];
+
     if (relevantChunks.length === 0) {
-      return res.status(404).json({
-        error: 'No relevant course material found for this query'
-      });
-    }
+      // No course material found - provide fallback response
+      console.warn('[Search] No relevant course material found for query:', query);
+      
+      // Build fallback system prompt without specific course context
+      const systemPrompt = `You are an interactive teaching assistant for COSC432 (Requirements Analysis and Modeling).
+Your role is to help students understand course concepts.
 
-    // Build context from retrieved chunks
-    const context = relevantChunks
-      .map(chunk => `[${chunk.document_name}, Section: ${chunk.section}, Page: ${chunk.page_number}]\n${chunk.chunk_text}`)
-      .join('\n\n');
+INSTRUCTIONS:
+1. Provide a helpful response about the requested topic if it relates to COSC432.
+2. Explain the concept clearly using general knowledge about requirements analysis.
+3. If the query is not related to COSC432, politely decline and redirect to course topics.
+4. Be encouraging and supportive in your teaching style.`;
 
-    // Build system prompt for info access mode
-    const systemPrompt = `You are an interactive teaching assistant for COSC432. Your role is to help students find and understand course information.
+      const messages = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: query }
+      ];
+
+      // Get response from LLM without course context
+      for await (const chunk of llmService.chat(messages, { stream: false })) {
+        summary += chunk;
+      }
+
+      // No sources available when no chunks found
+      sources = [];
+    } else {
+      // Course material found - use RAG context
+      // Build context from retrieved chunks
+      const context = relevantChunks
+        .map(chunk => `[${chunk.document_name}, Section: ${chunk.section}, Page: ${chunk.page_number}]\n${chunk.chunk_text}`)
+        .join('\n\n');
+
+      // Build system prompt for info access mode
+      const systemPrompt = `You are an interactive teaching assistant for COSC432. Your role is to help students find and understand course information.
 
 RELEVANT COURSE MATERIAL:
 ${context}
@@ -166,25 +191,25 @@ INSTRUCTIONS:
 4. Keep the summary focused and actionable.
 5. Format your response with clear structure and citations.`;
 
-    const messages = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: query }
-    ];
+      const messages = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: query }
+      ];
 
-    // Get summary from LLM
-    let summary = '';
-    for await (const chunk of llmService.chat(messages, { stream: false })) {
-      summary += chunk;
+      // Get summary from LLM
+      for await (const chunk of llmService.chat(messages, { stream: false })) {
+        summary += chunk;
+      }
+
+      // Format sources
+      sources = relevantChunks.map(chunk => ({
+        chunkId: chunk.id,
+        document: chunk.document_name,
+        section: chunk.section,
+        page: chunk.page_number,
+        excerpt: chunk.chunk_text.substring(0, 200) + '...'
+      }));
     }
-
-    // Format sources
-    const sources = relevantChunks.map(chunk => ({
-      chunkId: chunk.id,
-      document: chunk.document_name,
-      section: chunk.section,
-      page: chunk.page_number,
-      excerpt: chunk.chunk_text.substring(0, 200) + '...'
-    }));
 
     // Archive interaction (async, don't wait)
     // Always archive if Supabase is configured (even for anonymous users)
