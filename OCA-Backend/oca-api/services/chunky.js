@@ -195,7 +195,6 @@ async function ingestObject(obj) {
             .from(BUCKET)
             .list('', { // <-- FIX: Passing empty string to list the root directory
                 limit: 1000, 
-                search: '.' 
             });
         
         if (error) throw error;
