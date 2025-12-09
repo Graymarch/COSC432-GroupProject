@@ -23,6 +23,7 @@
 
 const express = require('express');
 const router = express.Router();
+const { v4: uuidv4 } = require('uuid');
 const llmService = require('../services/llmService');
 const ragService = require('../services/ragService');
 const supabase = require('../config/database');
@@ -65,12 +66,12 @@ const supabase = require('../config/database');
  */
 router.post('/', async (req, res, next) => {
   try {
-    const { query, sessionId, studentId, maxResults = 5 } = req.body;
+    const { query, sessionId: providedSessionId, studentId, maxResults = 5 } = req.body;
 
-    // Validate request
-    if (!query || !sessionId) {
+    // Validate request - only query is required
+    if (!query) {
       return res.status(400).json({
-        error: 'Missing required fields: query and sessionId are required'
+        error: 'Missing required field: query is required'
       });
     }
 
@@ -78,6 +79,61 @@ router.post('/', async (req, res, next) => {
       return res.status(503).json({
         error: 'Course material search is not available until Supabase is configured.'
       });
+    }
+
+    // Use provided sessionId or generate a new one
+    // Use provided studentId or default to "anonymous"
+    let sessionId = providedSessionId;
+    const userId = studentId || 'anonymous';
+
+    // Generate sessionId if not provided
+    if (!sessionId) {
+      sessionId = uuidv4();
+      console.log('[Search] Generated new session ID:', sessionId);
+    }
+
+    // Ensure session exists in database
+    try {
+      // Check if session exists
+      const { data: existingSession, error: checkError } = await supabase
+        .from('sessions')
+        .select('id')
+        .eq('id', sessionId)
+        .single();
+
+      // If session doesn't exist, create it
+      if (checkError || !existingSession) {
+        const { data: newSession, error: createError } = await supabase
+          .from('sessions')
+          .insert({
+            id: sessionId,
+            student_id: userId,
+            mode: 'info_access',
+            created_at: new Date().toISOString(),
+            last_activity: new Date().toISOString(),
+            context: {}
+          })
+          .select()
+          .single();
+
+        if (createError) {
+          console.warn('[Search] ⚠️  Failed to create session:', createError.message);
+          // Continue anyway
+        } else {
+          console.log('[Search] ✅ Auto-created session:', sessionId);
+        }
+      } else {
+        // Update last activity (async)
+        supabase
+          .from('sessions')
+          .update({ last_activity: new Date().toISOString() })
+          .eq('id', sessionId)
+          .then(() => {})
+          .catch(() => {});
+      }
+    } catch (err) {
+      console.warn('[Search] Session check/creation error:', err.message);
+      // Continue anyway
     }
 
     // Retrieve relevant chunks using RAG
@@ -131,18 +187,34 @@ INSTRUCTIONS:
     }));
 
     // Archive interaction (async, don't wait)
-    if (studentId && supabase) {
-      supabase.from('interactions').insert({
-        student_id: studentId,
-        session_id: sessionId,
-        mode: 'info_access',
-        user_message: query,
-        assistant_response: summary,
-        retrieved_chunk_ids: relevantChunks.map(c => c.id),
-        metadata: { sources_count: sources.length }
-      }).catch(err => console.error('Failed to archive interaction:', err));
-    } else if (studentId && !supabase) {
-      console.warn('[Search] Supabase not configured. Skipping interaction archive.');
+    // Always archive if Supabase is configured (even for anonymous users)
+    if (supabase && sessionId) {
+      supabase.from('interactions')
+        .insert({
+          student_id: userId,  // Use userId (could be "anonymous")
+          session_id: sessionId,
+          mode: 'info_access',
+          user_message: query,
+          assistant_response: summary,
+          retrieved_chunk_ids: relevantChunks.map(c => c.id) || [],
+          metadata: { sources_count: sources.length }
+        })
+        .select()  // Return the inserted row
+        .then(({ data, error }) => {
+          if (error) {
+            console.error('[Search] ❌ Failed to archive interaction');
+            console.error('[Search] Error:', error.message);
+            console.error('[Search] Error details:', JSON.stringify(error, null, 2));
+          } else {
+            console.log('[Search] ✅ Interaction archived successfully');
+            if (data && data.length > 0) {
+              console.log('[Search] Interaction ID:', data[0].id);
+            }
+          }
+        })
+        .catch(err => {
+          console.error('[Search] ❌ Archive exception:', err.message);
+        });
     }
 
     // Return response

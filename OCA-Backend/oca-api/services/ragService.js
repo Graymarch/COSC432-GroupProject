@@ -20,7 +20,7 @@
  */
 
 const supabase = require('../config/database');
-const llmService = require('./llmService');
+const embeddingService = require('./embeddingService');
 
 /**
  * RAG Service Class
@@ -87,7 +87,8 @@ class RAGService {
       // Step 1: Convert query to embedding (vector)
       // This converts the text question into a numerical representation
       // that captures its semantic meaning
-      const queryEmbedding = await llmService.generateEmbedding(query);
+      // Uses embeddingService for consistent embedding generation
+      const queryEmbedding = await embeddingService.generateEmbedding(query);
 
       // Step 2: Search Supabase using pgvector
       // The match_documents function is a PostgreSQL function that:
@@ -163,7 +164,8 @@ class RAGService {
       const chunksWithEmbeddings = await Promise.all(
         chunks.map(async (chunk) => {
           // Generate embedding for this chunk's text
-          const embedding = await llmService.generateEmbedding(chunk.text);
+          // Uses embeddingService for consistent embedding generation
+          const embedding = await embeddingService.generateEmbedding(chunk.text);
           
           // Return chunk with embedding added
           // The spread operator (...) copies all existing chunk properties
