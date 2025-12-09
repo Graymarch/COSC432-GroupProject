@@ -38,6 +38,7 @@ const chatRouter = require('./routes/chat');              // Tutoring mode chat
 const searchRouter = require('./routes/search');          // Info access mode search
 const interactionsRouter = require('./routes/interactions'); // Interaction history
 const sessionsRouter = require('./routes/sessions');      // Session management
+const documentsRouter = require('./routes/documents');     // Document processing
 
 // ============================================================================
 // EXPRESS APP SETUP
@@ -78,6 +79,7 @@ app.use('/api/chat', chatRouter);             // POST /api/chat - Tutoring mode
 app.use('/api/search', searchRouter);         // POST /api/search - Info access mode
 app.use('/api/interactions', interactionsRouter); // GET /api/interactions - History
 app.use('/api/sessions', sessionsRouter);     // POST/GET /api/sessions - Sessions
+app.use('/api/documents', documentsRouter);    // POST/GET /api/documents - Document processing
 
 // ============================================================================
 // ERROR HANDLING
@@ -93,6 +95,17 @@ app.use((req, res, next) => {
 // Global Error Handler - handles all errors in the application
 // This is the last middleware and catches any errors from routes
 app.use((err, req, res, next) => {
+  // Check if response has already been sent (e.g., during streaming)
+  // This prevents "Cannot set headers after they are sent" errors
+  if (res.headersSent) {
+    // If headers already sent, just log the error
+    console.error('[Error Handler] Error after response sent:', err.message);
+    if (err.stack && process.env.NODE_ENV === 'development') {
+      console.error('[Error Handler] Stack:', err.stack);
+    }
+    return;
+  }
+  
   // Set HTTP status code (default to 500 if not set)
   const status = err.status || 500;
   

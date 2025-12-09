@@ -23,6 +23,7 @@
 
 const express = require('express');
 const router = express.Router();
+const { v4: uuidv4 } = require('uuid');
 const llmService = require('../services/llmService');
 const ragService = require('../services/ragService');
 const supabase = require('../config/database');
@@ -35,8 +36,8 @@ const supabase = require('../config/database');
  * Request Body:
  *   {
  *     "message": "What is requirements analysis?",  // Student's question (required)
- *     "sessionId": "uuid-string",                    // Session ID (required)
- *     "studentId": "student-123"                      // Student ID (optional, for archiving)
+ *     "sessionId": "uuid-string",                    // Session ID (optional - auto-created if not provided)
+ *     "studentId": "student-123"                      // Student ID (optional - uses "anonymous" if not provided)
  *   }
  * 
  * Response:
@@ -46,23 +47,81 @@ const supabase = require('../config/database');
  * Example:
  *   POST /api/chat
  *   {
- *     "message": "Explain eigenvectors",
- *     "sessionId": "session-abc-123",
- *     "studentId": "student-xyz"
+ *     "message": "Explain eigenvectors"
  *   }
  * 
  *   Response (streaming):
  *   "Eigenvectors are special vectors that..."
+ * 
+ * Note: Session is automatically created on first message if not provided
  */
 router.post('/', async (req, res, next) => {
   try {
-    const { message, sessionId, studentId } = req.body;
+    const { message, sessionId: providedSessionId, studentId } = req.body;
 
-    // Validate request
-    if (!message || !sessionId) {
+    // Validate request - only message is required
+    if (!message) {
       return res.status(400).json({
-        error: 'Missing required fields: message and sessionId are required'
+        error: 'Missing required field: message is required'
       });
+    }
+
+    // Use provided sessionId or generate a new one
+    // Use provided studentId or default to "anonymous"
+    let sessionId = providedSessionId;
+    const userId = studentId || 'anonymous';
+
+    // Generate sessionId if not provided
+    if (!sessionId) {
+      sessionId = uuidv4();
+      console.log('[Chat] Generated new session ID:', sessionId);
+    }
+
+    // Ensure session exists in database (if Supabase is configured)
+    if (supabase) {
+      try {
+        // Check if session exists
+        const { data: existingSession, error: checkError } = await supabase
+          .from('sessions')
+          .select('id')
+          .eq('id', sessionId)
+          .single();
+
+        // If session doesn't exist, create it
+        if (checkError || !existingSession) {
+          const { data: newSession, error: createError } = await supabase
+            .from('sessions')
+            .insert({
+              id: sessionId,
+              student_id: userId,
+              mode: 'tutoring',
+              created_at: new Date().toISOString(),
+              last_activity: new Date().toISOString(),
+              context: {}
+            })
+            .select()
+            .single();
+
+          if (createError) {
+            console.warn('[Chat] ⚠️  Failed to create session:', createError.message);
+            console.warn('[Chat] Error details:', JSON.stringify(createError, null, 2));
+            // Continue anyway - sessionId is still valid for this request
+          } else {
+            console.log('[Chat] ✅ Auto-created session:', sessionId);
+          }
+        } else {
+          // Session exists - update last activity (async, don't wait)
+          supabase
+            .from('sessions')
+            .update({ last_activity: new Date().toISOString() })
+            .eq('id', sessionId)
+            .then(() => {})
+            .catch(() => {}); // Ignore errors for activity update
+        }
+      } catch (err) {
+        console.warn('[Chat] Session check/creation error:', err.message);
+        // Continue anyway - sessionId is still valid
+      }
     }
 
     // Retrieve conversation history for this session (if Supabase is configured)
@@ -133,18 +192,48 @@ INSTRUCTIONS:
     res.end();
 
     // Archive interaction (async, don't wait)
-    if (studentId && supabase) {
-      supabase.from('interactions').insert({
-        student_id: studentId,
-        session_id: sessionId,
-        mode: 'tutoring',
-        user_message: message,
-        assistant_response: fullResponse,
-        retrieved_chunk_ids: relevantChunks.map(c => c.id),
-        metadata: { chunks_count: relevantChunks.length }
-      }).catch(err => console.error('Failed to archive interaction:', err));
-    } else if (studentId && !supabase) {
-      console.warn('[Chat] Supabase not configured. Skipping interaction archive.');
+    // Always archive if Supabase is configured (even for anonymous users)
+    if (supabase && sessionId) {
+      supabase.from('interactions')
+        .insert({
+          student_id: userId,  // Use userId (could be "anonymous")
+          session_id: sessionId,
+          mode: 'tutoring',
+          user_message: message,
+          assistant_response: fullResponse,
+          retrieved_chunk_ids: relevantChunks.map(c => c.id) || [],
+          metadata: { chunks_count: relevantChunks.length }
+        })
+        .select()  // Return the inserted row
+        .then(({ data, error }) => {
+          if (error) {
+            console.error('[Chat] ❌ Failed to archive interaction');
+            console.error('[Chat] Error code:', error.code);
+            console.error('[Chat] Error message:', error.message);
+            console.error('[Chat] Error details:', JSON.stringify(error, null, 2));
+            console.error('[Chat] Attempted data:', {
+              student_id: userId,
+              session_id: sessionId,
+              mode: 'tutoring',
+              message_length: message.length,
+              response_length: fullResponse.length,
+              chunks_count: relevantChunks.length
+            });
+          } else {
+            console.log('[Chat] ✅ Interaction archived successfully');
+            if (data && data.length > 0) {
+              console.log('[Chat] Interaction ID:', data[0].id);
+            } else {
+              console.log('[Chat] Interaction saved (ID not returned)');
+            }
+          }
+        })
+        .catch(err => {
+          console.error('[Chat] ❌ Archive exception:', err.message);
+          // Don't throw - response already sent
+        });
+    } else if (!supabase) {
+      console.warn('[Chat] ⚠️  Supabase not configured. Skipping interaction archive.');
     }
   } catch (error) {
     next(error);
