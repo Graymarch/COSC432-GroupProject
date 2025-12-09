@@ -1,4 +1,4 @@
-require('dotenv').config({ path: '../.env' });
+require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
 
 // RAG/Embedding dependencies
